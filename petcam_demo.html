@@ -367,7 +367,6 @@
 
     </section>
 
-
     <!-- TAB 2: 位置 -->
     <section id="tab-location" class="hidden">
 
@@ -418,7 +417,6 @@
 
     </section>
 
-
     <!-- TAB 3: 事件 -->
     <section id="tab-feed" class="hidden">
 
@@ -439,7 +437,6 @@
       </div>
 
     </section>
-
 
     <!-- TAB 4: 我的 -->
     <section id="tab-me" class="hidden">
@@ -522,6 +519,13 @@
 
 <script>
 /* -----------------------------
+   Pace controls (你想更慢就调这里)
+----------------------------- */
+const BEHAVIOR_INTERVAL_MS = 9000;   // 行为/追踪切换间隔（原来 4200）
+const SUMMARY_REFRESH_MS  = 30000;  // 今日小结自动刷新最小间隔（原来每次行为都刷）
+let lastSummaryTs = 0;
+
+/* -----------------------------
    Demo data
 ----------------------------- */
 const pets = [
@@ -529,8 +533,6 @@ const pets = [
   { id:"coco", name:"可可", emoji:"🐱", color:"#F59E0B" }
 ];
 
-// ✅ 客厅用你的本地视频 living_cat2.mp4
-// 卧室仍是占位视频，你后续只要同样换成 ./bed_cat.mp4 即可
 const cams = {
   living: { name:"客厅摄像头", video:"./living_cat2.mp4" },
   bed:    { name:"卧室摄像头", video:"./living_cat2.mp4" }
@@ -538,22 +540,22 @@ const cams = {
 
 const behaviors = {
   mino: [
-    { text:"正在巡视客厅", level:"ok", room:"客厅", pos:[32,38], action:"patrol", confidence:.86 },
-    { text:"在餐区闻食盆", level:"ok", room:"餐区", pos:[25,78], action:"sniff_food", confidence:.82 },
-    { text:"快速奔跑（疑似追逐）", level:"warn", room:"客厅", pos:[44,46], action:"chase", confidence:.67 },
-    { text:"进入猫砂盆（如厕）", level:"ok", room:"猫砂区", pos:[76,74], action:"litter", confidence:.90 },
-    { text:"疑似呕吐（已录制片段）", level:"danger", room:"客厅", pos:[36,52], abnormal:"vomit", action:"vomit", confidence:.78 },
-    { text:"趴卧休息", level:"ok", room:"卧室", pos:[78,26], action:"rest", confidence:.88 },
-    { text:"与另一只猫对峙（疑似打架）", level:"danger", room:"客厅", pos:[50,44], abnormal:"fight", action:"fight", confidence:.74 },
-    { text:"在卧室打盹", level:"ok", room:"卧室", pos:[80,22], action:"sleep", confidence:.90 },
-    { text:"长时间不动（需留意）", level:"warn", room:"卧室", pos:[82,18], abnormal:"still", action:"still", confidence:.70 },
+    { text:"正在巡视客厅", level:"ok", room:"客厅", pos:[32,38], action:"patrol" },
+    { text:"在餐区闻食盆", level:"ok", room:"餐区", pos:[25,78], action:"sniff_food" },
+    { text:"快速奔跑（疑似追逐）", level:"warn", room:"客厅", pos:[44,46], action:"chase" },
+    { text:"进入猫砂盆（如厕）", level:"ok", room:"猫砂区", pos:[76,74], action:"litter" },
+    { text:"疑似呕吐（已录制片段）", level:"danger", room:"客厅", pos:[36,52], abnormal:"vomit", action:"vomit" },
+    { text:"趴卧休息", level:"ok", room:"卧室", pos:[78,26], action:"rest" },
+    { text:"与另一只猫对峙（疑似打架）", level:"danger", room:"客厅", pos:[50,44], abnormal:"fight", action:"fight" },
+    { text:"在卧室打盹", level:"ok", room:"卧室", pos:[80,22], action:"sleep" },
+    { text:"长时间不动（需留意）", level:"warn", room:"卧室", pos:[82,18], abnormal:"still", action:"still" },
   ],
   coco: [
-    { text:"在客厅玩逗猫棒", level:"ok", room:"客厅", pos:[55,48], action:"play", confidence:.87 },
-    { text:"在卧室晒太阳", level:"ok", room:"卧室", pos:[72,22], action:"sunbathe", confidence:.90 },
-    { text:"追逐米诺", level:"warn", room:"客厅", pos:[48,40], action:"chase", confidence:.66 },
-    { text:"在猫砂区停留", level:"ok", room:"猫砂区", pos:[70,80], action:"litter", confidence:.90 },
-    { text:"在餐区喝水", level:"ok", room:"餐区", pos:[34,82], action:"drink", confidence:.85 },
+    { text:"在客厅玩逗猫棒", level:"ok", room:"客厅", pos:[55,48], action:"play" },
+    { text:"在卧室晒太阳", level:"ok", room:"卧室", pos:[72,22], action:"sunbathe" },
+    { text:"追逐米诺", level:"warn", room:"客厅", pos:[48,40], action:"chase" },
+    { text:"在猫砂区停留", level:"ok", room:"猫砂区", pos:[70,80], action:"litter" },
+    { text:"在餐区喝水", level:"ok", room:"餐区", pos:[34,82], action:"drink" },
   ]
 };
 
@@ -580,7 +582,7 @@ let activePet = pets[0].id;
 let activeCam = "living";
 let behaviorIdx = 0;
 let trail = [];
-let recentContext = []; // 用于 LLM 文案的上下文“记忆”
+let recentContext = [];
 
 // 今日统计（每只宠物独立）
 let dailyStats = {
@@ -591,9 +593,9 @@ let dailyStats = {
 function initDailyStats(){
   return {
     rooms: new Set(),
-    actions: {},        // action -> count
+    actions: {},
     abnormal: 0,
-    motionBursts: 0,    // chase/play 计数
+    motionBursts: 0,
     litter: 0,
     drinkEat: 0,
     restSleep: 0,
@@ -609,7 +611,6 @@ function initDailyStats(){
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const rnd = arr => arr[Math.floor(Math.random()*arr.length)];
-const pct = (x)=> Math.round(x*100);
 
 /* -----------------------------
    LLM-style narration engine
@@ -711,10 +712,8 @@ function llmNarrate(b){
     contextLine = `这个行为模式持续了一小段时间，属于稳定状态。`;
   }
 
-  const confLine = `识别置信度约 ${pct(b.confidence || 0.75)}%。`;
   const ending = rnd(llmTemplates.endings);
-
-  return `${opener}${petName}${body} ${contextLine} ${confLine} ${ending}`.trim();
+  return `${opener}${petName}${body} ${contextLine} ${ending}`.trim();
 }
 
 // 今日小结模板
@@ -788,9 +787,6 @@ function llmDailySummary(petId){
   const energyLine = dailySummaryTemplates.energy[energyIdx];
   const ending = rnd(dailySummaryTemplates.endings);
 
-  const conf = Math.max(0.68, Math.min(0.92, 0.7 + (s.actions[topAction]||0)/12));
-  const confLine = `综合置信度约 ${pct(conf)}%。`;
-
   let extra = "";
   if(s.lastAbnormal==="vomit") extra = "今天有过一次疑似呕吐，我建议观察食欲和精神。";
   if(s.lastAbnormal==="fight") extra = "今天出现过冲突信号，若是磨合期可考虑减少碰面压力。";
@@ -804,7 +800,6 @@ function llmDailySummary(petId){
     energyLine,
     riskText,
     extra,
-    confLine,
     ending
   ].filter(Boolean).join(" ");
 }
@@ -817,6 +812,15 @@ function renderDailySummary(){
   const st = dailyStats[activePet];
   const mins = Math.floor((Date.now()-st.startTs)/60000);
   $("#summaryTime").textContent = `已跟踪 ${mins} 分钟`;
+}
+
+// 自动节流：只有超过 SUMMARY_REFRESH_MS 才刷新
+function maybeRefreshDailySummary(force=false){
+  const now = Date.now();
+  if(force || now - lastSummaryTs >= SUMMARY_REFRESH_MS){
+    renderDailySummary();
+    lastSummaryTs = now;
+  }
 }
 
 /* -----------------------------
@@ -884,7 +888,7 @@ function setActivePet(petId){
   renderFeed();
   renderAlerts();
   updateLocationFromBehavior();
-  renderDailySummary();
+  maybeRefreshDailySummary(true);
 }
 
 function setActiveCam(camKey){
@@ -904,13 +908,11 @@ function updateBehavior(force=false){
   if(!list || !list.length) return;
   const b = list[behaviorIdx % list.length];
 
-  // 行为短标签
   const chip = $("#behaviorChip");
   chip.classList.remove("ok","warn","danger");
   chip.classList.add(b.level);
   $("#behaviorText").textContent = b.text;
 
-  // 追踪框移动
   const box = $("#trackBox");
   const left = 20 + (b.pos[0]/100)*60;
   const top  = 18 + (b.pos[1]/100)*50;
@@ -920,20 +922,16 @@ function updateBehavior(force=false){
 
   $("#locPetName").textContent = pets.find(p=>p.id===activePet).name + " · 现在在" + b.room;
 
-  // ✅ LLM 风格实时解读
   const n = llmNarrate(b);
   const narrEl = $("#aiNarration");
   if(narrEl) narrEl.textContent = n;
 
-  // 上下文
   recentContext.push({room:b.room, action:b.action});
   recentContext = recentContext.slice(-6);
 
-  // 今日统计 + 小结刷新
   updateDailyStats(b);
-  renderDailySummary();
+  maybeRefreshDailySummary(false);
 
-  // 异常自动入告警（demo）
   if(b.abnormal && !force){
     const now = new Date();
     const hh = String(now.getHours()).padStart(2,"0");
@@ -957,7 +955,7 @@ function updateBehavior(force=false){
 
 function tickBehaviors(){
   updateBehavior(false);
-  setTimeout(tickBehaviors, 4200);
+  setTimeout(tickBehaviors, BEHAVIOR_INTERVAL_MS);
 }
 
 /* -----------------------------
@@ -1184,25 +1182,23 @@ initAlertsModal();
 initSwitches();
 renderFeed();
 renderAlerts();
-renderDailySummary();
+maybeRefreshDailySummary(true);
 updateClock();
 setActiveCam(activeCam);
 
-// buttons
 $("#btnReplay").onclick=()=>toast("回放最近 10 秒（demo）");
 $("#btnCall").onclick=()=>toast("已发出呼叫：'咪咪过来～'（demo）");
 $("#btnSnap").onclick=()=>toast("截图已保存到相册（demo）");
 
 const refreshBtn = $("#btnRefreshSummary");
 if(refreshBtn) refreshBtn.onclick = ()=> {
-  renderDailySummary();
+  maybeRefreshDailySummary(true);
   toast("小结已刷新（demo）");
 };
 
 const shareBtn = $("#btnShareSummary");
 if(shareBtn) shareBtn.onclick = ()=>toast("已生成分享图（demo）");
 
-// run loop
 tickBehaviors();
 </script>
 </body>
