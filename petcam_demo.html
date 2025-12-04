@@ -45,36 +45,17 @@
 
         // === 剧本配置 ===
         const VIDEO_SCRIPT = [
-          // 0-8s: 前奏
+          { startTime: 0, endTime: 8, hasMotion: false, cameraStatus: { text: '监控中', color: 'bg-green-500' }, boxes: [] },
+          { startTime: 8, endTime: 12, hasMotion: true, cameraStatus: { text: '识别中', color: 'bg-blue-500' }, boxes: [] },
           { 
-            startTime: 0, endTime: 8, hasMotion: false, 
-            cameraStatus: { text: '监控中', color: 'bg-green-500' } 
-          },
-          // 8-12s: 开始有动静
-          { 
-            startTime: 8, endTime: 12, hasMotion: true, 
-            cameraStatus: { text: '识别中', color: 'bg-blue-500' }
-          },
-          // 12-16s: 激烈时刻 (14s 触发点)
-          { 
-            startTime: 12, endTime: 16, hasMotion: true, 
-            cameraStatus: { text: '⚠️ 异常', color: 'bg-orange-500' }, 
-            // === 核心逻辑：第14秒触发 ===
+            startTime: 12, endTime: 16, hasMotion: true, cameraStatus: { text: '⚠️ 异常', color: 'bg-orange-500' }, 
             triggerAlert: { 
-              timeTrigger: 14, 
-              cat: '双猫', 
-              type: 'warning', 
-              action: '深夜跑酷', 
-              title: '检测到深夜跑酷行为', 
-              detail: '【夜视行为分析】监测到客厅发生激烈的追逐游戏。栗子率先发起冲刺，奶油紧随其后。双方动作敏捷，AI 判定为高能玩耍状态。', 
-              videoTime: 14 
-            } 
+              timeTrigger: 14, cat: '双猫', type: 'warning', action: '深夜跑酷', title: '检测到深夜跑酷行为', 
+              detail: '【夜视行为分析】监测到客厅发生激烈的追逐游戏。栗子率先发起冲刺，奶油紧随其后。双方动作敏捷，AI 判定为高能玩耍状态。', videoTime: 14 
+            },
+            boxes: []
           },
-          // 16s+: 结束
-          { 
-            startTime: 16, endTime: 100, hasMotion: false, 
-            cameraStatus: { text: '监控中', color: 'bg-green-500' }
-          }
+          { startTime: 16, endTime: 100, hasMotion: false, cameraStatus: { text: '监控中', color: 'bg-green-500' }, boxes: [] }
         ];
 
         const initialLogs = [
@@ -125,7 +106,6 @@
           return days;
         };
 
-        // --- Main Component ---
         function App() {
           const [activeTab, setActiveTab] = useState('home');
           const [logs, setLogs] = useState(initialLogs);
@@ -171,7 +151,6 @@
               setVideoUrl(url);
               setViewMode('live');
               setTriggeredAlerts(new Set()); 
-              // 自动播放
               setTimeout(() => {
                 if(videoRef.current) {
                     videoRef.current.play();
@@ -211,7 +190,7 @@
                const q = userQuery.toLowerCase();
                if (q.includes("表现") || q.includes("总结")) return `今日总结：\n1. **栗子**：精力旺盛，早上晨练，晚上**23:09**还来了一场深夜跑酷！\n2. **奶油**：白天很安静，晚上被栗子带着跑了一会儿。\n两只猫今天运动量都很足。`;
                if (q.includes("栗子")) return `**栗子**今天进食了 ${catStats['栗子'].eatCount} 次。它非常活跃，除了早上的晨练，刚刚 **23:09** 还在客厅跑酷呢。`;
-               if (q.includes("奶油")) return `**奶油**今天大部分时间很安静，不过 **23:09** 也加入了栗子的跑酷队伍，难得运动了一下。`;
+               if (q.includes("奶油")) return `**奶油**今天很让人省心。进食 ${catStats['奶油'].eatCount} 次，活跃度只有 ${catStats['奶油'].activeLevel}%。`;
                if (q.includes("异常") || q.includes("违规") || q.includes("跑酷")) return `检测到高能时刻：**23:09** 栗子和奶油在客厅进行了激烈的**深夜跑酷**（已为您生成智能卡片）。`;
                return "我是 PetGuard 宠物看顾。栗子今天很皮，奶油很乖。您可以问我“栗子今天干了什么？”或者“谁在跑酷？”";
             };
@@ -300,7 +279,6 @@
             return () => videoElement.removeEventListener('timeupdate', handleTimeUpdate);
           }, [videoUrl, playModal.show, triggeredAlerts]); 
 
-          // 弹窗播放控制
           useEffect(() => {
             if (playModal.show && modalVideoRef.current && videoUrl) {
               modalVideoRef.current.currentTime = playModal.startTime;
@@ -346,24 +324,34 @@
                    <div className="flex-1 min-w-0"><div className="flex justify-between items-start"><h4 className="font-bold text-gray-900 text-sm">PetGuard 智能警报</h4><span className="text-[10px] text-gray-400">刚刚</span></div><p className="font-medium text-gray-800 text-xs mt-1 truncate">{pushNotification.title}</p><p className="text-gray-500 text-[10px] mt-0.5 line-clamp-2">{pushNotification.text}</p></div>
                 </div>
               )}
+              
+              {/* AI回放弹窗 - 纯净版 (无框) */}
               {playModal.show && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex flex-col justify-center items-center animate-in fade-in duration-200">
                   <button onClick={() => setPlayModal({ show: false, startTime: 0 })} className="absolute top-4 right-4 text-white p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors z-50"><X size={24} /></button>
                   <div className="w-full aspect-video bg-black relative">
-                    {/* 回放视频：移除 loop 属性，确保不自动重播；添加 muted 属性，确保默认静音 */}
                     <video ref={modalVideoRef} src={videoUrl} className="w-full h-full object-contain" controls muted={isMuted} />
+                    {/* 已移除识别框 */}
                   </div>
                   <div className="mt-6 text-white/90 text-sm bg-gray-800/80 px-6 py-2 rounded-full border border-white/10 flex items-center gap-2"><Sparkles size={14} className="text-yellow-400"/> 云端 AI 分析回放</div>
                 </div>
               )}
 
-              {/* Calendar Modal omitted for brevity - keeping layout logic */}
+              {showCalendarModal && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in duration-300">
+                   <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative">
+                      <button onClick={() => setShowCalendarModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-50"><X size={20}/></button>
+                      <div className="flex items-center justify-between mb-6 px-1"><div className="text-xl font-bold text-gray-800">2025年 11月</div><div className="flex gap-2"><button className="p-2 hover:bg-gray-100 rounded-full text-gray-400"><ChevronLeft size={20}/></button><button className="p-2 hover:bg-gray-100 rounded-full text-gray-400"><ChevronRight size={20}/></button></div></div>
+                      <div className="grid grid-cols-7 gap-y-4 gap-x-2 text-center mb-4">{['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-gray-400 font-medium">{d}</div>)}{generateCalendarDays().map((day, i) => (<div key={i} className="flex justify-center">{day ? (<button onClick={() => { setSelectedDate(`11/${day}`); setShowCalendarModal(false); }} className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-all ${`11/${day}` === selectedDate ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : day === 24 ? 'bg-orange-50 text-orange-600 border border-orange-200' : 'hover:bg-gray-100 text-gray-700'}`}>{day}</button>) : <div className="w-9 h-9"></div>}</div>))}</div>
+                      <div className="text-center"><button onClick={() => { setSelectedDate('11/24'); setShowCalendarModal(false); }} className="text-sm text-orange-600 font-medium hover:underline">回到今天</button></div>
+                   </div>
+                </div>
+              )}
 
               <div className={`flex flex-col flex-1 h-full ${activeTab === 'home' ? 'block' : 'hidden'}`}>
                   <div className="relative bg-black w-full aspect-video flex-shrink-0 z-20 shadow-md">
                     {videoUrl ? (
                       <>
-                        {/* 首页视频：确保默认静音 */}
                         <video ref={videoRef} src={videoUrl} className="w-full h-full object-contain bg-black" loop muted={isMuted} playsInline onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
                         
                         {/* 纯净模式：仅保留底部控制 */}
@@ -371,7 +359,6 @@
                            <button onClick={() => setIsMuted(!isMuted)} className="p-1.5 bg-black/40 rounded-full text-white/80 backdrop-blur-sm hover:bg-black/60 transition-colors">{isMuted ? <VolumeX size={16}/> : <Volume2 size={16}/>}</button>
                            <button onClick={togglePlay} className="p-1.5 bg-black/40 rounded-full text-white/80 backdrop-blur-sm hover:bg-black/60 transition-colors">{isPlaying ? <Pause size={16}/> : <Play size={16}/>}</button>
                         </div>
-                        {/* 移除所有中央提示 */}
                       </>
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-gray-900">
@@ -412,9 +399,92 @@
                   </div>
               </div>
 
-              {/* Tab 2, 3, 4 Omitted for brevity but functionality is preserved */}
-              {activeTab !== 'home' && (
-                 <div className="flex flex-col items-center justify-center h-full text-gray-400 bg-gray-50"><p>其他页面内容已省略 (逻辑保留)</p></div>
+              {/* Tab 2: 日报 (Timeline) */}
+              {activeTab === 'timeline' && (
+                <div className="p-4 flex-1 overflow-y-auto bg-gray-50">
+                  <div className="flex items-center justify-between mb-6 pt-2"><h2 className="text-xl font-bold text-gray-800">每日喵记</h2><div className="flex bg-white rounded-lg p-1 shadow-sm border border-gray-100">{['all', '栗子', '奶油'].map(filter => <button key={filter} onClick={() => setSelectedCatFilter(filter)} className={`px-3 py-1 text-xs rounded-md transition-all ${selectedCatFilter === filter ? 'bg-orange-100 text-orange-700 font-bold' : 'text-gray-500 hover:text-gray-700'}`}>{filter === 'all' ? '全部' : filter}</button>)}</div></div>
+                  <div className="mb-8 space-y-4">
+                     {(selectedCatFilter === 'all' || selectedCatFilter === '栗子') && <div className="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow"><div className="absolute top-0 right-0 p-3 opacity-10"><Sparkles className="text-orange-500" size={50}/></div><div className="flex items-center gap-2 mb-2"><div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">栗</div><span className="font-bold text-gray-800">栗子</span></div><div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line pl-1">{formatText(catStats['栗子'].report)}</div></div>}
+                     {(selectedCatFilter === 'all' || selectedCatFilter === '奶油') && <div className="bg-white p-5 rounded-2xl border border-yellow-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow"><div className="absolute top-0 right-0 p-3 opacity-10"><Moon className="text-yellow-500" size={50}/></div><div className="flex items-center gap-2 mb-2"><div className="w-6 h-6 rounded-full bg-yellow-100 flex items-center justify-center text-xs font-bold text-yellow-700">奶</div><span className="font-bold text-gray-800">奶油</span></div><div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line pl-1">{formatText(catStats['奶油'].report)}</div></div>}
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">今日时间轴</h3>
+                  <div className="space-y-6 relative before:absolute before:left-[15px] before:top-2 before:bottom-0 before:w-0.5 before:bg-gray-200">
+                     {logs.filter(log => selectedCatFilter === 'all' || log.cat.includes(selectedCatFilter) || (log.cat === '双猫' && selectedCatFilter !== 'all')).map(log => (
+                       <div key={log.id} className="relative pl-8 group">
+                         <div className={`absolute left-0 top-3 w-8 h-8 rounded-full border-4 border-gray-50 shadow-sm flex items-center justify-center z-10 transition-colors ${log.type === 'warning' ? 'bg-orange-500 text-white' : 'bg-white text-gray-400 group-hover:border-orange-100 group-hover:text-orange-400'}`}>{log.type === 'warning' ? <AlertTriangle size={14}/> : <Clock size={14}/>}</div>
+                         <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex gap-4 hover:shadow-md transition-all">
+                            <div className={`w-24 h-16 rounded-lg flex-shrink-0 relative overflow-hidden group/img cursor-pointer ${log.thumbColor}`} onClick={() => { if (log.videoTime) { if (!videoUrl) return alert('请先在监控页上传视频'); setPlayModal({ show: true, startTime: log.videoTime }); } }}><div className="absolute inset-0 flex items-center justify-center text-gray-400 opacity-50">{log.videoTime ? <Film size={20}/> : <VolumeX size={20}/>}</div>{log.videoTime && <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"><ZoomIn size={20} className="text-white drop-shadow-md"/></div>}</div>
+                            <div className="flex-1 py-0.5"><div className="flex justify-between items-start mb-1"><span className="font-bold text-sm text-gray-800">{log.action}</span><span className="text-xs text-gray-400 font-mono">{log.time}</span></div><p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{log.detail}</p><div className="flex gap-2"><span className="text-[10px] bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-gray-500">{log.cat}</span>{log.videoTime && <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded flex items-center gap-1 font-medium cursor-pointer" onClick={() => handleJumpToVideo(log.videoTime)}><PlayCircle size={10}/> 查看回放</span>}</div></div>
+                         </div>
+                       </div>
+                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: 记录 (Record) */}
+              {activeTab === 'record' && (
+                <div className="flex-1 bg-gray-50 overflow-y-auto flex flex-col">
+                   <div className="bg-white px-4 pt-6 pb-4 border-b border-gray-100 sticky top-0 z-20">
+                      <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold text-gray-900">历史记录</h2><button onClick={() => setShowCalendarModal(true)} className="text-gray-500 hover:text-gray-700 bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"><Calendar size={20}/></button></div>
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-3">{weeklyStats.map(stat => <button key={stat.date} onClick={() => setSelectedDate(stat.date)} className={`flex-shrink-0 flex flex-col items-center justify-center w-12 h-14 rounded-xl border transition-all ${selectedDate === stat.date ? 'bg-orange-500 border-orange-500 text-white shadow-md' : 'bg-white border-gray-100 text-gray-400 hover:border-gray-300'}`}><span className="text-[10px] opacity-80">{stat.day}</span><span className="text-sm font-bold">{stat.date.split('/')[1]}</span></button>)}</div>
+                      <div className="flex justify-center mt-2"><div className="flex bg-gray-100 rounded-lg p-0.5 shadow-inner">{['all', '栗子', '奶油'].map(filter => <button key={filter} onClick={() => setRecordCatFilter(filter)} className={`px-4 py-1.5 text-xs rounded-md transition-all font-medium ${recordCatFilter === filter ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{filter === 'all' ? '全部' : filter}</button>)}</div></div>
+                   </div>
+                   <div className="p-4 space-y-6">
+                      <section className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                         <div className="flex justify-between items-center mb-4"><h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><BarChart2 size={16} className="text-orange-500"/> 健康趋势 (7天)</h3><div className="flex gap-3 text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded"><span className={`flex items-center gap-1 font-medium transition-opacity ${(recordCatFilter === 'all' || recordCatFilter === '栗子') ? 'opacity-100' : 'opacity-30'}`}><div className="w-2 h-2 rounded-full bg-[#fb923c]"></div> 栗子(橙)</span><span className={`flex items-center gap-1 font-medium transition-opacity ${(recordCatFilter === 'all' || recordCatFilter === '奶油') ? 'opacity-100' : 'opacity-30'}`}><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> 奶油(黄)</span><span className="flex items-center gap-1 text-gray-400 pl-1 border-l border-gray-200">线:活跃 柱:进食</span></div></div>
+                         <div className="w-full h-40 relative overflow-x-auto scrollbar-hide">
+                            <div className="min-w-[400px] h-full relative">
+                                <div className="absolute inset-0 flex items-end justify-around px-4 pb-6">{weeklyStats.map((stat, i) => <div key={i} className="flex gap-1 items-end h-full w-4">{(recordCatFilter === 'all' || recordCatFilter === '栗子') && <div className="w-1.5 bg-orange-100 rounded-t-sm relative group" style={{ height: `${stat.liziEat * 10}%` }}></div>}{(recordCatFilter === 'all' || recordCatFilter === '奶油') && <div className="w-1.5 bg-yellow-100 rounded-t-sm relative group" style={{ height: `${stat.creamEat * 10}%` }}></div>}</div>)}</div>
+                                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ paddingBottom: '24px' }}>{(recordCatFilter === 'all' || recordCatFilter === '栗子') && <><polyline fill="none" stroke="#fb923c" strokeWidth="2" points={weeklyStats.map((s, i) => `${(i * (400/7)) + 28},${100 - s.liziActive}`).join(' ')} />{weeklyStats.map((s, i) => <circle key={i} cx={(i * (400/7)) + 28} cy={100 - s.liziActive} r="3" fill="white" stroke="#fb923c" strokeWidth="2" />)}</>}{(recordCatFilter === 'all' || recordCatFilter === '奶油') && <><polyline fill="none" stroke="#facc15" strokeWidth="2" points={weeklyStats.map((s, i) => `${(i * (400/7)) + 28},${100 - s.creamActive}`).join(' ')} />{weeklyStats.map((s, i) => <circle key={i} cx={(i * (400/7)) + 28} cy={100 - s.creamActive} r="3" fill="white" stroke="#facc15" strokeWidth="2" />)}</>}</svg>
+                                <div className="absolute bottom-0 left-0 right-0 flex justify-around text-[10px] text-gray-400 px-2">{weeklyStats.map(s => <span key={s.date}>{s.date}</span>)}</div>
+                            </div>
+                         </div>
+                      </section>
+                      <section>
+                         <h3 className="text-sm font-bold text-gray-800 mb-4 px-1 flex items-center justify-between"><span>{selectedDate === '11/24' ? '今日' : selectedDate} 关键事件</span><span className="text-xs text-gray-400 font-normal">{recordLogs.filter(log => recordCatFilter === 'all' || log.cat.includes(recordCatFilter) || (log.cat === '双猫' && recordCatFilter !== 'all')).length} 条记录</span></h3>
+                         {recordLogs.length > 0 ? (
+                           <div className="space-y-6 relative before:absolute before:left-[15px] before:top-2 before:bottom-0 before:w-0.5 before:bg-gray-200">
+                              {recordLogs.filter(log => recordCatFilter === 'all' || log.cat.includes(recordCatFilter) || (log.cat === '双猫' && recordCatFilter !== 'all')).map(log => (
+                                <div key={log.id} className="relative pl-8 group">
+                                   <div className={`absolute left-0 top-3 w-8 h-8 rounded-full border-4 border-gray-50 shadow-sm flex items-center justify-center z-10 transition-colors ${log.type === 'danger' ? 'bg-red-500 text-white' : 'bg-white text-gray-400 group-hover:border-orange-100 group-hover:text-orange-400'}`}>{log.type === 'danger' ? <AlertTriangle size={14}/> : <Clock size={14}/>}</div>
+                                   <div className="relative rounded-2xl overflow-hidden shadow-sm group border border-gray-100 bg-white">
+                                      <div className={`w-full h-40 ${log.thumbColor} relative cursor-pointer`} onClick={() => { if (log.videoTime) { if (!videoUrl) return alert('请先在监控页上传视频'); setPlayModal({ show: true, startTime: log.videoTime }); } }}>
+                                         <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1"><Clock size={10}/> {log.time}</div>
+                                         <div className="absolute inset-0 flex items-center justify-center"><div className={`bg-white/20 backdrop-blur-sm p-3 rounded-full transition-transform ${log.videoTime ? 'group-hover:scale-110' : 'opacity-50'}`}>{log.videoTime ? <Play className="text-white fill-current" size={24}/> : <VolumeX className="text-white" size={24}/>}</div></div>
+                                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3 pt-8"><div className="text-white font-bold text-sm">{log.action}</div><div className="text-white/80 text-xs line-clamp-1">{log.detail}</div></div>
+                                      </div>
+                                      <div className="bg-white p-2 flex gap-2 rounded-b-2xl border-t border-gray-50"><span className={`text-[10px] px-2 py-0.5 rounded flex items-center gap-1 ${log.type === 'danger' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>{log.type === 'danger' ? <AlertTriangle size={10}/> : <Sparkles size={10}/>} {log.type === 'danger' ? '异常检测' : 'AI 识别'}</span><span className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded border border-gray-100">{log.cat}</span></div>
+                                   </div>
+                                </div>
+                              ))}
+                           </div>
+                         ) : <div className="flex flex-col items-center justify-center py-10 text-gray-400 space-y-2"><div className="bg-gray-100 p-4 rounded-full"><Film size={24} className="opacity-50"/></div><p className="text-xs">该日期无关键录像</p></div>}
+                      </section>
+                   </div>
+                </div>
+              )}
+
+              {/* Tab 4: 设置 (Settings) */}
+              {activeTab === 'settings' && (
+                <div className="flex-1 bg-gray-50 overflow-y-auto">
+                   <div className="bg-white px-6 py-8 border-b border-gray-100"><h2 className="text-2xl font-bold text-gray-900 mb-1">设置</h2><p className="text-sm text-gray-500">管理您的设备与宠物档案</p></div>
+                   <div className="p-4 space-y-6">
+                      <section>
+                         <div className="flex justify-between items-center mb-3 px-1"><h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">我的宠物</h3><button className="text-xs text-orange-600 font-medium hover:text-orange-700">添加宠物</button></div>
+                         <div className="space-y-3">{Object.keys(catStats).map(cat => <div key={cat} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between group cursor-pointer hover:border-orange-200 transition-colors"><div className="flex items-center gap-4"><div className={`w-12 h-12 rounded-full ${catStats[cat].avatarColor} flex items-center justify-center text-lg font-bold text-gray-600 shadow-inner`}>{cat[0]}</div><div><div className="font-bold text-gray-900">{cat}</div><div className="text-xs text-gray-500 mt-0.5">{catStats[cat].type} · {catStats[cat].weight}</div></div></div><div className="bg-gray-50 p-2 rounded-full text-gray-400 group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors"><Edit2 size={16}/></div></div>)}</div>
+                      </section>
+                      <section>
+                         <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 px-1">设备状态</h3>
+                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"><div className="p-4 flex items-center justify-between border-b border-gray-50"><div className="flex items-center gap-3"><div className="bg-blue-50 p-2 rounded-lg text-blue-600"><Camera size={20}/></div><div><div className="text-sm font-bold text-gray-900">PetGuard Pro</div><div className="text-xs text-gray-500">固件 v2.4.1 (最新)</div></div></div><div className="flex items-center gap-1 text-green-500 bg-green-50 px-2 py-1 rounded text-xs font-medium"><div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> 在线</div></div><div className="grid grid-cols-2 divide-x divide-gray-50"><div className="p-3 flex items-center justify-center gap-2 text-sm text-gray-600"><Wifi size={16} className="text-gray-400"/> 信号强</div><div className="p-3 flex items-center justify-center gap-2 text-sm text-gray-600"><Battery size={16} className="text-gray-400"/> 接通电源</div></div></div>
+                      </section>
+                      <section>
+                         <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 px-1">通用</h3>
+                         <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50"><div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"><div className="flex items-center gap-3"><div className="bg-orange-50 p-2 rounded-lg text-orange-600"><Bell size={18}/></div><span className="text-sm font-medium text-gray-700">智能通知推送</span></div><div className="w-10 h-6 bg-orange-500 rounded-full relative"><div className="absolute top-1 right-1 w-4 h-4 bg-white rounded-full shadow-sm"></div></div></div><div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"><div className="flex items-center gap-3"><div className="bg-purple-50 p-2 rounded-lg text-purple-600"><Shield size={18}/></div><span className="text-sm font-medium text-gray-700">隐私保护模式</span></div><ChevronRight size={16} className="text-gray-400"/></div></div>
+                      </section>
+                      <div className="text-center text-xs text-gray-400 py-4">PetGuard App v1.0.0 (Beta)</div>
+                   </div>
+                </div>
               )}
 
               <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 flex justify-around items-center px-6 pb-safe pt-1 max-w-md mx-auto z-40 h-[65px] shadow-[0_-1px_10px_rgba(0,0,0,0.02)]">
